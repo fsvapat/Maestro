@@ -182,6 +182,7 @@ dependencies {
     implementation(libs.jackson.datatype.jsr310)
     implementation(libs.jansi)
     implementation(libs.jansinative)
+    implementation(libs.jline)
     implementation(libs.jcodec)
     implementation(libs.jcodec.awt)
     implementation(libs.square.okhttp)

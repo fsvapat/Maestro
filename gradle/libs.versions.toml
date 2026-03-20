@@ -35,6 +35,7 @@ jackson = "2.17.1"
 jansi = "3.30.6"
 jarchivelib = "1.2.0"
 jcodec = "0.2.5"
+jline = "3.27.1"
 junit = "5.10.2"
 kotlin = "2.2.0"
 mcpSdk = "0.11.1"
@@ -108,6 +109,7 @@ jansinative = { module = "org.jline:jline-native", version.ref = "jansi" }
 jarchivelib = { module = "org.rauschig:jarchivelib", version.ref = "jarchivelib" }
 jcodec = { module = "org.jcodec:jcodec", version.ref = "jcodec" }
 jcodec-awt = { module = "org.jcodec:jcodec-javase", version.ref = "jcodec" }
+jline = { module = "org.jline:jline", version.ref = "jline" }
 junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
 junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
 junit-jupiter-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit" }
