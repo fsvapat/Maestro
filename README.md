@@ -25,6 +25,7 @@ Flows run on any emulator, simulator, browser, or physical Android device. Physi
 
 - [Why Maestro?](#why-maestro)
 - [Getting Started](#getting-started)
+- [Interactive CLI](#interactive-cli)
 - [Maestro MCP – Agentic UI Testing](#maestro-mcp--agentic-ui-testing)
 - [Maestro Studio – Test IDE](#maestro-studio--test-ide)
 - [Maestro Cloud – Parallel Execution & Scalability](#maestro-cloud--parallel-execution--scalability)
@@ -82,6 +83,12 @@ The links below will guide you through the next steps.
 - [Installing Maestro](https://docs.maestro.dev/maestro-cli/how-to-install-maestro-cli) (includes regular Windows installation)
 - [Add Maestro MCP to your coding agent](https://docs.maestro.dev/get-started/maestro-mcp)
 - [Run your first test with the Maestro CLI](https://docs.maestro.dev/maestro-cli/run-your-first-test-with-the-maestro-cli) (or just ask your agent to do it for you)
+
+&nbsp;
+
+## Interactive CLI
+
+This fork adds **`maestro interact`**: a terminal REPL against a connected device (same session setup as other CLI commands). Start it with a simulator or emulator running, then use commands such as `tap Login`, `type hello@email.com`, `swipe up`, `back`, `screenshot`, or `hierarchy`. Type **`help`** in the REPL for the full list, **`quit`** or **`exit`** to leave. For CLI flags (e.g. device selection), run **`maestro interact --help`**.
 
 &nbsp;
 
