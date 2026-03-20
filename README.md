@@ -22,6 +22,7 @@
 
 - [Why Maestro?](#why-maestro)
 - [Getting Started](#getting-started)
+- [Interactive CLI](#interactive-cli)
 - [Resources & Community](#resources--community)
 - [Contributing](#contributing)
 - [Maestro Studio – Test IDE](#maestro-studio--test-ide)
@@ -80,6 +81,12 @@ The links below will guide you through the next steps.
 - [Run a sample flow](https://docs.maestro.dev/getting-started/run-a-sample-flow)
 - [Writing your first flow](https://docs.maestro.dev/getting-started/writing-your-first-flow)
 
+
+---
+
+## Interactive CLI
+
+This fork adds **`maestro interact`**: a terminal REPL against a connected device (same session setup as other CLI commands). Start it with a simulator or emulator running, then use commands such as `tap Login`, `type hello@email.com`, `swipe up`, `back`, `screenshot`, or `hierarchy`. Type **`help`** in the REPL for the full list, **`quit`** or **`exit`** to leave. For CLI flags (e.g. device selection), run **`maestro interact --help`**.
 
 ---
 
