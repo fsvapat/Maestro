@@ -28,6 +28,7 @@ import maestro.cli.command.CheckSyntaxCommand
 import maestro.cli.command.CloudCommand
 import maestro.cli.command.DownloadSamplesCommand
 import maestro.cli.command.DriverCommand
+import maestro.cli.command.InteractCommand
 import maestro.cli.command.ListCloudDevicesCommand
 import maestro.cli.command.ListDevicesCommand
 import maestro.cli.command.LoginCommand
@@ -73,6 +74,7 @@ import kotlin.system.exitProcess
         CheckSyntaxCommand::class,
         DriverCommand::class,
         McpCommand::class,
+        InteractCommand::class,
     ]
 )
 class App {
