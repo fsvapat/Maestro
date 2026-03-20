@@ -165,6 +165,7 @@ dependencies {
     implementation(libs.jackson.dataformat.xml)
     implementation(libs.jackson.datatype.jsr310)
     implementation(libs.jansi)
+    implementation(libs.jline)
     implementation(libs.jcodec)
     implementation(libs.jcodec.awt)
     implementation(libs.square.okhttp)

@@ -13,8 +13,19 @@ import maestro.cli.session.MaestroSessionManager
 import okio.buffer
 import okio.sink
 import org.fusesource.jansi.Ansi.ansi
+import org.jline.reader.EndOfFileException
+import org.jline.reader.LineReaderBuilder
+import org.jline.reader.UserInterruptException
+import org.jline.terminal.TerminalBuilder
 import picocli.CommandLine
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.io.PrintWriter
+import java.util.concurrent.ConcurrentLinkedQueue
 
 @CommandLine.Command(
     name = "interact",
@@ -80,37 +91,122 @@ class InteractCommand : Runnable {
     private fun runRepl(maestro: Maestro) {
         printWelcome()
 
-        while (true) {
-            print(ansi().fgBrightCyan().a("maestro> ").reset().toString())
-            val input = readLine()
+        val terminal = TerminalBuilder.builder().jansi(true).build()
+        try {
+            val lineReader = LineReaderBuilder.builder().terminal(terminal).build()
+            val emitResult: (String) -> Unit = { line -> lineReader.printAbove(line) }
+            val prompt = interactPromptString()
 
-            if (input == null) {
-                println("Goodbye!")
-                return
-            }
+            runBlocking {
+                val commandQueue = Channel<ParsedCommand>(Channel.UNLIMITED)
+                val pendingDescriptions = ConcurrentLinkedQueue<String>()
+                val out = terminal.writer()
 
-            val trimmedInput = input.trim()
-            if (trimmedInput.isEmpty()) {
-                continue
-            }
+                val readerJob = launch(Dispatchers.IO) {
+                    try {
+                        while (true) {
+                            val trimmedInput = try {
+                                lineReader.readLine(prompt).trim()
+                            } catch (_: UserInterruptException) {
+                                continue
+                            } catch (_: EndOfFileException) {
+                                out.println()
+                                out.println("Goodbye!")
+                                out.flush()
+                                commandQueue.close()
+                                return@launch
+                            }
 
-            when (val command = parseCommand(trimmedInput)) {
-                is ParsedCommand.Quit -> {
-                    println("Goodbye!")
-                    return
+                            if (trimmedInput.isEmpty()) {
+                                continue
+                            }
+
+                            when (val command = parseCommand(trimmedInput)) {
+                                is ParsedCommand.Quit -> {
+                                    out.println("Goodbye!")
+                                    out.flush()
+                                    commandQueue.close()
+                                    return@launch
+                                }
+                                is ParsedCommand.Help -> printHelp(out)
+                                is ParsedCommand.Unknown -> {
+                                    out.println(readerErrorLine("Unknown command: ${command.input}"))
+                                    out.println("Type 'help' for available commands.")
+                                    out.flush()
+                                }
+                                is ParsedCommand.Error -> {
+                                    out.println(readerErrorLine(command.message))
+                                    out.flush()
+                                }
+                                else -> {
+                                    val description = describeQueuedCommand(command)
+                                    pendingDescriptions.offer(description)
+                                    lineReader.printAbove(queuedNoticeLine(description))
+                                    commandQueue.send(command)
+                                }
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        lineReader.printAbove(readerErrorLine("REPL error: ${e.message}"))
+                        commandQueue.close()
+                    }
                 }
-                is ParsedCommand.Help -> printHelp()
-                is ParsedCommand.Unknown -> {
-                    printError("Unknown command: ${command.input}")
-                    println("Type 'help' for available commands.")
+
+                val workerJob = launch(Dispatchers.IO) {
+                    try {
+                        for (command in commandQueue) {
+                            executeCommand(maestro, command, emitResult)
+                            pendingDescriptions.poll()
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    }
                 }
-                is ParsedCommand.Error -> {
-                    printError(command.message)
-                }
-                else -> executeCommand(maestro, command)
+
+                readerJob.join()
+                workerJob.join()
             }
+        } finally {
+            terminal.close()
         }
     }
+
+    private fun interactPromptString(): String =
+        if (DisableAnsiMixin.ansiEnabled) {
+            ansi().fgBrightCyan().a("maestro> ").reset().toString()
+        } else {
+            "maestro> "
+        }
+
+    private fun readerErrorLine(message: String): String =
+        ansi().fgBrightRed().a("✗ ").reset().a(message).toString()
+
+    private fun queuedNoticeLine(description: String): String =
+        if (DisableAnsiMixin.ansiEnabled) {
+            ansi().fgBrightYellow().a("Queued: ").reset().a(description).toString()
+        } else {
+            "Queued: $description"
+        }
+
+    private fun describeQueuedCommand(command: ParsedCommand): String =
+        when (command) {
+            is ParsedCommand.Tap -> "tap ${command.text}"
+            is ParsedCommand.Type -> "type ${command.text}"
+            is ParsedCommand.Swipe -> "swipe ${command.direction.name.lowercase()}"
+            is ParsedCommand.Back -> "back"
+            is ParsedCommand.Scroll -> "scroll"
+            is ParsedCommand.Erase -> "erase ${command.count}"
+            is ParsedCommand.Launch -> "launch ${command.appId}"
+            is ParsedCommand.Screenshot -> "screenshot ${command.path}"
+            is ParsedCommand.Hierarchy -> "hierarchy"
+            is ParsedCommand.Help,
+            is ParsedCommand.Quit,
+            is ParsedCommand.Unknown,
+            is ParsedCommand.Error ->
+                error("command is not queued for execution: $command")
+        }
 
     private fun printWelcome() {
         println(
@@ -125,8 +221,8 @@ class InteractCommand : Runnable {
         )
     }
 
-    private fun printHelp() {
-        println(
+    private fun printHelp(out: PrintWriter) {
+        out.print(
             """
 
             Available commands:
@@ -147,6 +243,7 @@ class InteractCommand : Runnable {
 
             """.trimIndent()
         )
+        out.flush()
     }
 
     private fun parseCommand(input: String): ParsedCommand {
@@ -204,94 +301,94 @@ class InteractCommand : Runnable {
         }
     }
 
-    private fun executeCommand(maestro: Maestro, command: ParsedCommand) {
+    private fun executeCommand(maestro: Maestro, command: ParsedCommand, emit: (String) -> Unit) {
         try {
             when (command) {
-                is ParsedCommand.Tap -> executeTap(maestro, command.text)
-                is ParsedCommand.Type -> executeType(maestro, command.text)
-                is ParsedCommand.Swipe -> executeSwipe(maestro, command.direction)
-                is ParsedCommand.Back -> executeBack(maestro)
-                is ParsedCommand.Scroll -> executeScroll(maestro)
-                is ParsedCommand.Erase -> executeErase(maestro, command.count)
-                is ParsedCommand.Launch -> executeLaunch(maestro, command.appId)
-                is ParsedCommand.Screenshot -> executeScreenshot(maestro, command.path)
-                is ParsedCommand.Hierarchy -> executeHierarchy(maestro)
+                is ParsedCommand.Tap -> executeTap(maestro, command.text, emit)
+                is ParsedCommand.Type -> executeType(maestro, command.text, emit)
+                is ParsedCommand.Swipe -> executeSwipe(maestro, command.direction, emit)
+                is ParsedCommand.Back -> executeBack(maestro, emit)
+                is ParsedCommand.Scroll -> executeScroll(maestro, emit)
+                is ParsedCommand.Erase -> executeErase(maestro, command.count, emit)
+                is ParsedCommand.Launch -> executeLaunch(maestro, command.appId, emit)
+                is ParsedCommand.Screenshot -> executeScreenshot(maestro, command.path, emit)
+                is ParsedCommand.Hierarchy -> executeHierarchy(maestro, emit)
                 is ParsedCommand.Help, is ParsedCommand.Quit, is ParsedCommand.Unknown, is ParsedCommand.Error -> {
                     // Handled in runRepl
                 }
             }
         } catch (e: Exception) {
-            printError("Error: ${e.message}")
+            emitResultError("Error: ${e.message}", emit)
         }
     }
 
-    private fun executeTap(maestro: Maestro, text: String) {
+    private fun executeTap(maestro: Maestro, text: String, emit: (String) -> Unit) {
         val regex = ".*${Regex.escape(text)}.*".toRegex(RegexOption.IGNORE_CASE)
         val filter = Filters.textMatches(regex)
 
         val result = maestro.findElementWithTimeout(10000L, filter)
         if (result == null) {
-            printError("Element not found: $text")
+            emitResultError("Element not found: $text", emit)
             return
         }
 
         maestro.tap(result.element, result.hierarchy)
-        printSuccess("Tapped on '$text'")
+        emitResultSuccess("Tapped on '$text'", emit)
     }
 
-    private fun executeType(maestro: Maestro, text: String) {
+    private fun executeType(maestro: Maestro, text: String, emit: (String) -> Unit) {
         maestro.inputText(text)
-        printSuccess("Typed '$text'")
+        emitResultSuccess("Typed '$text'", emit)
     }
 
-    private fun executeSwipe(maestro: Maestro, direction: SwipeDirection) {
+    private fun executeSwipe(maestro: Maestro, direction: SwipeDirection, emit: (String) -> Unit) {
         maestro.swipe(swipeDirection = direction, duration = 400)
-        printSuccess("Swiped ${direction.name.lowercase()}")
+        emitResultSuccess("Swiped ${direction.name.lowercase()}", emit)
     }
 
-    private fun executeBack(maestro: Maestro) {
+    private fun executeBack(maestro: Maestro, emit: (String) -> Unit) {
         maestro.backPress()
-        printSuccess("Pressed back")
+        emitResultSuccess("Pressed back", emit)
     }
 
-    private fun executeScroll(maestro: Maestro) {
+    private fun executeScroll(maestro: Maestro, emit: (String) -> Unit) {
         maestro.scrollVertical()
-        printSuccess("Scrolled")
+        emitResultSuccess("Scrolled", emit)
     }
 
-    private fun executeErase(maestro: Maestro, count: Int) {
+    private fun executeErase(maestro: Maestro, count: Int, emit: (String) -> Unit) {
         maestro.eraseText(count)
-        printSuccess("Erased $count character${if (count > 1) "s" else ""}")
+        emitResultSuccess("Erased $count character${if (count > 1) "s" else ""}", emit)
     }
 
-    private fun executeLaunch(maestro: Maestro, appId: String) {
+    private fun executeLaunch(maestro: Maestro, appId: String, emit: (String) -> Unit) {
         maestro.launchApp(appId)
-        printSuccess("Launched $appId")
+        emitResultSuccess("Launched $appId", emit)
     }
 
-    private fun executeScreenshot(maestro: Maestro, path: String) {
+    private fun executeScreenshot(maestro: Maestro, path: String, emit: (String) -> Unit) {
         val file = File(path)
         file.sink().buffer().use { sink ->
             maestro.takeScreenshot(sink, compressed = false)
         }
-        printSuccess("Screenshot saved to ${file.absolutePath}")
+        emitResultSuccess("Screenshot saved to ${file.absolutePath}", emit)
     }
 
-    private fun executeHierarchy(maestro: Maestro) {
+    private fun executeHierarchy(maestro: Maestro, emit: (String) -> Unit) {
         val tree = maestro.viewHierarchy().root
         val hierarchy = jacksonObjectMapper()
             .setSerializationInclusion(JsonInclude.Include.NON_NULL)
             .writerWithDefaultPrettyPrinter()
             .writeValueAsString(tree)
-        println(hierarchy)
+        emit(hierarchy)
     }
 
-    private fun printSuccess(message: String) {
-        println(ansi().fgBrightGreen().a("✓ ").reset().a(message).toString())
+    private fun emitResultSuccess(message: String, emit: (String) -> Unit) {
+        emit(ansi().fgBrightGreen().a("✓ ").reset().a(message).toString())
     }
 
-    private fun printError(message: String) {
-        println(ansi().fgBrightRed().a("✗ ").reset().a(message).toString())
+    private fun emitResultError(message: String, emit: (String) -> Unit) {
+        emit(ansi().fgBrightRed().a("✗ ").reset().a(message).toString())
     }
 
     private sealed class ParsedCommand {
