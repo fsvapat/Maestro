@@ -77,7 +77,7 @@ class InteractCommand : Runnable {
         MaestroSessionManager.newSession(
             host = parent?.host,
             port = parent?.port,
-            driverHostPort = null,
+            driverHostPort = parent?.driverHostPort,
             teamId = appleTeamId,
             deviceId = parent?.deviceId,
             platform = parent?.platform,
@@ -301,7 +301,7 @@ class InteractCommand : Runnable {
         }
     }
 
-    private fun executeCommand(maestro: Maestro, command: ParsedCommand, emit: (String) -> Unit) {
+    private suspend fun executeCommand(maestro: Maestro, command: ParsedCommand, emit: (String) -> Unit) {
         try {
             when (command) {
                 is ParsedCommand.Tap -> executeTap(maestro, command.text, emit)
@@ -322,7 +322,7 @@ class InteractCommand : Runnable {
         }
     }
 
-    private fun executeTap(maestro: Maestro, text: String, emit: (String) -> Unit) {
+    private suspend fun executeTap(maestro: Maestro, text: String, emit: (String) -> Unit) {
         val regex = ".*${Regex.escape(text)}.*".toRegex(RegexOption.IGNORE_CASE)
         val filter = Filters.textMatches(regex)
 
@@ -336,37 +336,37 @@ class InteractCommand : Runnable {
         emitResultSuccess("Tapped on '$text'", emit)
     }
 
-    private fun executeType(maestro: Maestro, text: String, emit: (String) -> Unit) {
+    private suspend fun executeType(maestro: Maestro, text: String, emit: (String) -> Unit) {
         maestro.inputText(text)
         emitResultSuccess("Typed '$text'", emit)
     }
 
-    private fun executeSwipe(maestro: Maestro, direction: SwipeDirection, emit: (String) -> Unit) {
+    private suspend fun executeSwipe(maestro: Maestro, direction: SwipeDirection, emit: (String) -> Unit) {
         maestro.swipe(swipeDirection = direction, duration = 400)
         emitResultSuccess("Swiped ${direction.name.lowercase()}", emit)
     }
 
-    private fun executeBack(maestro: Maestro, emit: (String) -> Unit) {
+    private suspend fun executeBack(maestro: Maestro, emit: (String) -> Unit) {
         maestro.backPress()
         emitResultSuccess("Pressed back", emit)
     }
 
-    private fun executeScroll(maestro: Maestro, emit: (String) -> Unit) {
+    private suspend fun executeScroll(maestro: Maestro, emit: (String) -> Unit) {
         maestro.scrollVertical()
         emitResultSuccess("Scrolled", emit)
     }
 
-    private fun executeErase(maestro: Maestro, count: Int, emit: (String) -> Unit) {
+    private suspend fun executeErase(maestro: Maestro, count: Int, emit: (String) -> Unit) {
         maestro.eraseText(count)
         emitResultSuccess("Erased $count character${if (count > 1) "s" else ""}", emit)
     }
 
-    private fun executeLaunch(maestro: Maestro, appId: String, emit: (String) -> Unit) {
+    private suspend fun executeLaunch(maestro: Maestro, appId: String, emit: (String) -> Unit) {
         maestro.launchApp(appId)
         emitResultSuccess("Launched $appId", emit)
     }
 
-    private fun executeScreenshot(maestro: Maestro, path: String, emit: (String) -> Unit) {
+    private suspend fun executeScreenshot(maestro: Maestro, path: String, emit: (String) -> Unit) {
         val file = File(path)
         file.sink().buffer().use { sink ->
             maestro.takeScreenshot(sink, compressed = false)
@@ -374,7 +374,7 @@ class InteractCommand : Runnable {
         emitResultSuccess("Screenshot saved to ${file.absolutePath}", emit)
     }
 
-    private fun executeHierarchy(maestro: Maestro, emit: (String) -> Unit) {
+    private suspend fun executeHierarchy(maestro: Maestro, emit: (String) -> Unit) {
         val tree = maestro.viewHierarchy().root
         val hierarchy = jacksonObjectMapper()
             .setSerializationInclusion(JsonInclude.Include.NON_NULL)
