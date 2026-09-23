@@ -12,7 +12,7 @@ import maestro.cli.report.TestDebugReporter
 import maestro.cli.session.MaestroSessionManager
 import okio.buffer
 import okio.sink
-import org.fusesource.jansi.Ansi.ansi
+import org.jline.jansi.Ansi.ansi
 import org.jline.reader.EndOfFileException
 import org.jline.reader.LineReaderBuilder
 import org.jline.reader.UserInterruptException
