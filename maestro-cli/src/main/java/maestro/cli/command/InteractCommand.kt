@@ -3,6 +3,7 @@ package maestro.cli.command
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import maestro.Filters
+import maestro.KeyCode
 import maestro.Maestro
 import maestro.SwipeDirection
 import maestro.cli.App
@@ -195,6 +196,7 @@ class InteractCommand : Runnable {
             is ParsedCommand.Tap -> "tap ${command.text}"
             is ParsedCommand.Type -> "type ${command.text}"
             is ParsedCommand.Swipe -> "swipe ${command.direction.name.lowercase()}"
+            is ParsedCommand.PressKey -> "presskey ${command.keyCode.description}"
             is ParsedCommand.Back -> "back"
             is ParsedCommand.Scroll -> "scroll"
             is ParsedCommand.Erase -> "erase ${command.count}"
@@ -232,6 +234,7 @@ class InteractCommand : Runnable {
               type <text>       Input text (e.g., type hello@email.com)
               input <text>      Same as type
               swipe <dir>       Swipe in direction: up, down, left, right
+              presskey <key>    Press a key (e.g., presskey Enter)
               back              Press back button
               scroll            Scroll down
               erase <count>     Erase characters (e.g., erase 10)
@@ -278,6 +281,18 @@ class InteractCommand : Runnable {
                     else -> ParsedCommand.Error("Unknown swipe direction: $argument")
                 }
             }
+            "presskey" -> {
+                if (argument.isNullOrBlank()) {
+                    ParsedCommand.Error("presskey requires a key name (e.g., presskey Enter)")
+                } else {
+                    val keyCode = KeyCode.getByName(argument)
+                    if (keyCode == null) {
+                        ParsedCommand.Error("Unknown key name: $argument")
+                    } else {
+                        ParsedCommand.PressKey(keyCode)
+                    }
+                }
+            }
             "back" -> ParsedCommand.Back
             "scroll" -> ParsedCommand.Scroll
             "erase" -> {
@@ -307,6 +322,7 @@ class InteractCommand : Runnable {
                 is ParsedCommand.Tap -> executeTap(maestro, command.text, emit)
                 is ParsedCommand.Type -> executeType(maestro, command.text, emit)
                 is ParsedCommand.Swipe -> executeSwipe(maestro, command.direction, emit)
+                is ParsedCommand.PressKey -> executePressKey(maestro, command.keyCode, emit)
                 is ParsedCommand.Back -> executeBack(maestro, emit)
                 is ParsedCommand.Scroll -> executeScroll(maestro, emit)
                 is ParsedCommand.Erase -> executeErase(maestro, command.count, emit)
@@ -344,6 +360,11 @@ class InteractCommand : Runnable {
     private suspend fun executeSwipe(maestro: Maestro, direction: SwipeDirection, emit: (String) -> Unit) {
         maestro.swipe(swipeDirection = direction, duration = 400)
         emitResultSuccess("Swiped ${direction.name.lowercase()}", emit)
+    }
+
+    private suspend fun executePressKey(maestro: Maestro, keyCode: KeyCode, emit: (String) -> Unit) {
+        maestro.pressKey(keyCode)
+        emitResultSuccess("Pressed ${keyCode.description}", emit)
     }
 
     private suspend fun executeBack(maestro: Maestro, emit: (String) -> Unit) {
@@ -395,6 +416,7 @@ class InteractCommand : Runnable {
         data class Tap(val text: String) : ParsedCommand()
         data class Type(val text: String) : ParsedCommand()
         data class Swipe(val direction: SwipeDirection) : ParsedCommand()
+        data class PressKey(val keyCode: KeyCode) : ParsedCommand()
         object Back : ParsedCommand()
         object Scroll : ParsedCommand()
         data class Erase(val count: Int) : ParsedCommand()
